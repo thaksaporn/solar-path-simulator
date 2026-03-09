@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Solar Path Simulator Professional</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/loaders/FontLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/geometries/TextGeometry.js"></script>
+
+<style>
+
+body{
+margin:0;
+overflow:hidden;
+font-family:Arial;
+}
+
+#ui{
+position:absolute;
+left:20px;
+top:20px;
+background:#1e2d44;
+color:white;
+padding:20px;
+border-radius:12px;
+width:260px;
+}
+
+input{
+width:100%;
+margin-bottom:10px;
+}
+
+button{
+width:100%;
+padding:6px;
+margin-top:5px;
+}
+
+</style>
+</head>
+
+<body>
+
+<div id="ui">
+
+<h3>Sun Control</h3>
+
+<div>
+Location
+<select id="locationSelect">
+<option value="">Custom</option>
+<option value="sut">Suranaree University of Technology</option>
+<option value="bangkok">Bangkok Thailand</option>
+<option value="tokyo">Tokyo Japan</option>
+<option value="newyork">New York USA</option>
+<option value="london">London UK</option>
+<option value="sydney">Sydney Australia</option>
+<option value="paris">Paris France</option>
+</select>
+</div>
+
+<div>
+Latitude:
+<input id="latInput" type="number" min="-90" max="90" step="0.01" value="14.88">
+<input id="latSlider" type="range" min="-90" max="90" step="0.01" value="14.88">
+</div>
+
+<div>
+Longitude:
+<input id="lonInput" type="number" min="-180" max="180" step="0.01" value="102.01">
+<input id="lonSlider" type="range" min="-180" max="180" step="0.01" value="102.01">
+</div>
+
+Date
+<input id="date" type="date">
+
+Time 
+<input id="time" type="range" min="0" max="1440" step="1" value="720">
+
+<button onclick="playSun()">Play / Stop Sun</button>
+
+<div id="info"></div>
+
+</div>
+
+<script>
+
+// ---------- SCENE ----------
+
+let scene=new THREE.Scene()
+
+let camera=new THREE.PerspectiveCamera(
+60,
+window.innerWidth/window.innerHeight,
+0.1,
+3000
+)
+
+camera.position.set(120,80,120)
+
+let renderer=new THREE.WebGLRenderer({antialias:true})
+renderer.setSize(window.innerWidth,window.innerHeight)
+renderer.shadowMap.enabled=true
+
+document.body.appendChild(renderer.domElement)
+
+let controls=new THREE.OrbitControls(camera,renderer.domElement)
+
+
+// ---------- SKY ----------
+
+let skyGeo=new THREE.SphereGeometry(2000,32,32)
+
+let skyMat=new THREE.MeshBasicMaterial({
+color:0xbfd4e6,
+side:THREE.BackSide
+})
+
+scene.add(new THREE.Mesh(skyGeo,skyMat))
+
+
+
+
+// ---------- GROUND ----------
+
+let ground=new THREE.Mesh(
+new THREE.CircleGeometry(300,128),
+new THREE.MeshStandardMaterial({color:0x87ceeb})
+)
+
+ground.rotation.x=-Math.PI/2
+ground.receiveShadow=true
+
+scene.add(ground)
+scene.add(new THREE.GridHelper(600,120))
+
+let grid = new THREE.GridHelper(600,120)
+grid.position.y = 0.05
+scene.add(grid)
+
+// ---------- SUN DOME ----------
+
+let domeRadius=70
+let solarRadius=70
+
+let domeGeo=new THREE.SphereGeometry(
+domeRadius,
+48,
+48,
+0,
+Math.PI*2,
+0,
+Math.PI/2
+)
+
+let dome=new THREE.LineSegments(
+new THREE.WireframeGeometry(domeGeo),
+new THREE.LineBasicMaterial({
+color:0xffcc66,
+transparent:true,
+opacity:0.4
+})
+)
+
+scene.add(dome)
+function createAzimuthCircle(){
+
+let segments=180
+let geometry=new THREE.CircleGeometry(domeRadius+3,segments)
+geometry.vertices.shift()
+
+let material=new THREE.LineBasicMaterial({color:0x000000})
+
+let circle=new THREE.LineLoop(geometry,material)
+
+circle.rotation.x=-Math.PI/2
+
+scene.add(circle)
+
+}
+
+function createAzimuthTicks(){
+
+let r=domeRadius+3
+
+for(let deg=0;deg<360;deg+=5){
+
+let rad=deg*Math.PI/180
+
+let length=(deg%30==0)?3:1
+
+let x1=r*Math.sin(rad)
+let z1=r*Math.cos(rad)
+
+let x2=(r+length)*Math.sin(rad)
+let z2=(r+length)*Math.cos(rad)
+
+let points=[
+new THREE.Vector3(x1,0.05,z1),
+new THREE.Vector3(x2,0.05,z2)
+]
+
+let geometry=new THREE.BufferGeometry().setFromPoints(points)
+
+let line=new THREE.Line(
+geometry,
+new THREE.LineBasicMaterial({color:0x000000})
+)
+
+scene.add(line)
+
+}
+
+}
+
+createAzimuthTicks()
+
+function createCompassLabels(){
+
+const loader = new THREE.FontLoader()
+
+loader.load('https://threejs.org/examples/fonts/helvetiker_bold.typeface.json', function(font){
+
+const directions = [
+{label:'N',deg:0},
+{label:'E',deg:90},
+{label:'S',deg:180},
+{label:'W',deg:270}
+]
+
+directions.forEach(d=>{
+
+let r=domeRadius+6
+let rad=d.deg*Math.PI/180
+
+const geometry = new THREE.TextGeometry(d.label,{
+font:font,
+size:2,
+height:0.2
+})
+
+const material = new THREE.MeshBasicMaterial({color:0x111111})
+
+const text = new THREE.Mesh(geometry,material)
+
+text.rotation.x=-Math.PI/2
+
+text.position.set(
+r*Math.sin(rad),
+0.05,
+r*Math.cos(rad)
+)
+
+scene.add(text)
+
+})
+
+})
+
+}
+
+createCompassLabels()
+
+function createDegreeText(){
+
+const loader = new THREE.FontLoader()
+
+loader.load('https://threejs.org/examples/fonts/helvetiker_regular.typeface.json', function(font){
+
+for(let deg=0;deg<360;deg+=30){
+
+let r=domeRadius+8
+let rad=deg*Math.PI/180
+
+const geometry = new THREE.TextGeometry(deg+"°",{
+font:font,
+size:1.5,
+height:0.1
+})
+
+const material = new THREE.MeshBasicMaterial({color:0x000000})
+
+const text = new THREE.Mesh(geometry,material)
+
+text.rotation.x = -Math.PI/2
+text.rotation.z = -rad
+
+text.position.set(
+r*Math.sin(-rad),
+0.05,
+r*Math.cos(-rad)
+)
+
+scene.add(text)
+
+
+}
+
+})
+
+}
+
+createDegreeText()
+
+
+
+// ---------- COMPASS ----------
+
+const dirs=["N","E","S","W"]
+
+dirs.forEach((d,i)=>{
+
+let canvas=document.createElement("canvas")
+let ctx=canvas.getContext("2d")
+
+canvas.width=256
+canvas.height=256
+
+let colors={
+N:"#000",
+E:"#000",
+S:"#000",
+W:"#000"
+}
+
+ctx.fillStyle=colors[d]
+ctx.font="120px Arial"
+ctx.textAlign="center"
+ctx.fillText(d,128,150)
+
+let texture=new THREE.CanvasTexture(canvas)
+
+let sprite=new THREE.Sprite(
+new THREE.SpriteMaterial({map:texture})
+)
+
+let angle=i*Math.PI/2
+
+sprite.position.set(
+(domeRadius+5)*Math.sin(angle),
+0.5,
+(domeRadius+5)*Math.cos(angle)
+)
+
+sprite.scale.set(20,20,1)
+
+scene.add(sprite)
+
+})
+
+
+// ---------- BUILDINGS ----------
+
+for(let i=0;i<20;i++){
+
+let h=Math.random()*30+10
+
+let box=new THREE.Mesh(
+new THREE.BoxGeometry(10,h,10),
+new THREE.MeshStandardMaterial({color:0xcccccc})
+)
+
+box.position.set(
+(Math.random()-0.5)*80,
+h/2,
+(Math.random()-0.5)*80
+)
+
+box.castShadow=true
+
+scene.add(box)
+
+}
+
+
+// ---------- SUN ----------
+
+
+
+let sun=new THREE.Mesh(
+new THREE.SphereGeometry(3,32,32),
+new THREE.MeshBasicMaterial({color:0xffff00})
+)
+
+scene.add(sun)
+let sunVector
+let solarPathLine
+
+let sunLight=new THREE.DirectionalLight(0xffffff,1.4)
+
+sunLight.castShadow=true
+sunLight.shadow.mapSize.width=2048
+sunLight.shadow.mapSize.height=2048
+
+scene.add(sunLight)
+
+scene.add(new THREE.AmbientLight(0xffffff,0.3))
+
+const locations={
+
+sut:{lat:14.8818,lon:102.0170},
+bangkok:{lat:13.7563,lon:100.5018},
+tokyo:{lat:35.6762,lon:139.6503},
+newyork:{lat:40.7128,lon:-74.0060},
+london:{lat:51.5072,lon:-0.1276},
+sydney:{lat:-33.8688,lon:151.2093},
+paris:{lat:48.8566,lon:2.3522}
+
+}
+
+
+// ---------- SOLAR POSITION ----------
+
+function solarPosition(date,lat,lon){
+
+let rad=Math.PI/180
+
+let start=new Date(date.getFullYear(),0,0)
+let diff=date-start
+let d=Math.floor(diff/86400000)
+
+let B=(360/365)*(d-81)
+
+let EoT=
+9.87*Math.sin(2*B*rad)
+-
+7.53*Math.cos(B*rad)
+-
+1.5*Math.sin(B*rad)
+
+let delta=
+-23.45*Math.cos((360/365)*(d+10)*rad)
+
+let tz=Math.round(lon/15)
+
+let LSTM=15*tz
+
+let TC=4*(lon-LSTM)+EoT
+
+let LT=date.getHours()+date.getMinutes()/60
+
+let LST=LT+TC/60
+
+let HRA=15*(LST-12)
+
+let sin_alt=
+Math.sin(delta*rad)*Math.sin(lat*rad)
++
+Math.cos(delta*rad)*Math.cos(lat*rad)*Math.cos(HRA*rad)
+
+let altitude=Math.asin(sin_alt)/rad
+
+let cos_az=
+(
+Math.sin(delta*rad)*Math.cos(lat*rad)
+-
+Math.cos(delta*rad)*Math.sin(lat*rad)*Math.cos(HRA*rad)
+)
+/Math.cos(altitude*rad)
+
+cos_az=Math.max(-1,Math.min(1,cos_az))
+
+let azimuth=Math.acos(cos_az)/rad
+
+if(HRA>0) azimuth=360-azimuth
+
+return{altitude,azimuth}
+
+}
+
+
+// ---------- SUNRISE SUNSET ----------
+
+function sunTimes(lat,date){
+
+let rad=Math.PI/180
+
+let d=Math.floor((date-new Date(date.getFullYear(),0,0))/86400000)
+
+let decl=-23.45*Math.cos((360/365)*(d+10)*rad)
+
+let sunrise=12-(Math.acos(-Math.tan(lat*rad)*Math.tan(decl))/rad)/15
+let sunset=12+(Math.acos(-Math.tan(lat*rad)*Math.tan(decl))/rad)/15
+
+return{sunrise,sunset}
+
+}
+
+
+// ---------- UPDATE SUN ----------
+
+
+
+
+
+function updateSunVector(){
+
+if(sunVector) scene.remove(sunVector)
+
+let points=[
+new THREE.Vector3(0,0,0),
+sun.position
+]
+
+let geometry=new THREE.BufferGeometry().setFromPoints(points)
+
+sunVector=new THREE.Line(
+geometry,
+new THREE.LineBasicMaterial({color:0x00aaff})
+)
+
+scene.add(sunVector)
+
+}
+
+function drawSolarPath(){
+
+if(solarPathLine) scene.remove(solarPathLine)
+
+let lat=parseFloat(document.getElementById("latInput").value)
+let lon=parseFloat(document.getElementById("lonInput").value)
+
+let dateInput=document.getElementById("date").value
+let baseDate=new Date(dateInput)
+
+let points=[]
+
+for(let h=0;h<=24;h+=0.25){
+
+let d=new Date(baseDate)
+d.setHours(Math.floor(h))
+d.setMinutes((h%1)*60)
+
+let pos=solarPosition(d,lat,lon)
+
+if(pos.altitude>0){
+
+let alt=pos.altitude*Math.PI/180
+let az=pos.azimuth*Math.PI/180
+
+let r=solarRadius
+
+let x=r*Math.cos(alt)*Math.sin(az)
+let y=r*Math.sin(alt)
+let z=r*Math.cos(alt)*Math.cos(az)
+
+points.push(new THREE.Vector3(x,y,z))
+
+}
+
+}
+
+let geometry=new THREE.BufferGeometry().setFromPoints(points)
+
+solarPathLine=new THREE.Line(
+geometry,
+new THREE.LineBasicMaterial({color:0xff0000})
+)
+
+scene.add(solarPathLine)
+
+}
+
+function updateSkyColor(minutes){
+
+let t = minutes/1440
+
+let color
+
+if(t<0.25){        // กลางคืน → เช้า
+color = new THREE.Color(0x0a1a2a)
+}
+else if(t<0.35){   // sunrise
+color = new THREE.Color(0xffb27a)
+}
+else if(t<0.7){    // daytime
+color = new THREE.Color(0x87ceeb)
+}
+else if(t<0.85){   // sunset
+color = new THREE.Color(0xff9966)
+}
+else{              // night
+color = new THREE.Color(0x0a1a2a)
+}
+
+scene.background = color
+
+}
+
+
+function updateSun(){
+
+lat = parseFloat(document.getElementById("latInput").value)
+lon = parseFloat(document.getElementById("lonInput").value)
+
+let dateInput=document.getElementById("date").value
+let minutes=parseInt(document.getElementById("time").value)
+updateSkyColor(minutes)
+
+let h=Math.floor(minutes/60)
+let m=minutes%60
+
+let date=new Date(dateInput)
+date.setHours(h)
+date.setMinutes(m)
+
+let pos=solarPosition(date,lat,lon)
+
+let alt=pos.altitude*Math.PI/180
+let az=pos.azimuth*Math.PI/180
+
+let r=solarRadius
+
+let x=r*Math.cos(alt)*Math.sin(az)
+let y=r*Math.sin(alt)
+let z=r*Math.cos(alt)*Math.cos(az)
+
+sun.position.set(x,y,z)
+sunLight.position.copy(sun.position)
+updateSunVector()
+
+let timeText=
+h.toString().padStart(2,"0")+":"+
+m.toString().padStart(2,"0")
+
+let st=sunTimes(lat,date)
+
+document.getElementById("info").innerHTML=
+
+"Time: "+timeText+"<br>"+
+"Altitude: "+pos.altitude.toFixed(2)+"°<br>"+
+"Azimuth: "+pos.azimuth.toFixed(2)+"°<br>"+
+"Sunrise: "+st.sunrise.toFixed(2)+"<br>"+
+"Sunset: "+st.sunset.toFixed(2)
+drawSolarPath()
+
+}
+
+
+// ---------- PLAY SUN ----------
+
+let playing=false
+
+function playSun(){
+
+playing=!playing
+
+let slider=document.getElementById("time")
+
+if(playing){
+
+interval=setInterval(()=>{
+
+slider.value=parseInt(slider.value)+1
+
+if(slider.value>1440) slider.value=0
+
+updateSun()
+
+
+},40)
+
+}else{
+
+clearInterval(interval)
+
+}
+
+}
+
+
+// ---------- UI ----------
+
+let timeSlider=document.getElementById("time")
+
+timeSlider.oninput=updateSun
+
+let latInput=document.getElementById("latInput")
+let latSlider=document.getElementById("latSlider")
+
+let lonInput=document.getElementById("lonInput")
+let lonSlider=document.getElementById("lonSlider")
+
+latSlider.oninput=()=>{
+latInput.value=latSlider.value
+updateSun()
+}
+
+latInput.oninput=()=>{
+latSlider.value=latInput.value
+updateSun()
+}
+
+lonSlider.oninput=()=>{
+lonInput.value=lonSlider.value
+updateSun()
+}
+
+lonInput.oninput=()=>{
+lonSlider.value=lonInput.value
+updateSun()
+}
+
+document.getElementById("date").oninput=updateSun
+
+document.getElementById("locationSelect").onchange=function(){
+
+let loc=this.value
+
+if(loc && locations[loc]){
+
+let lat=locations[loc].lat
+let lon=locations[loc].lon
+
+latInput.value=lat
+latSlider.value=lat
+
+lonInput.value=lon
+lonSlider.value=lon
+
+updateSun()
+
+}
+
+}
+
+document.getElementById("date").valueAsDate=new Date()
+
+updateSun()
+
+
+// ---------- LOOP ----------
+
+function animate(){
+
+requestAnimationFrame(animate)
+
+renderer.render(scene,camera)
+
+}
+
+animate()
+
+
+window.addEventListener("resize",()=>{
+
+camera.aspect=window.innerWidth/window.innerHeight
+camera.updateProjectionMatrix()
+
+renderer.setSize(window.innerWidth,window.innerHeight)
+
+})
+
+</script>
+</body>
+</html>
